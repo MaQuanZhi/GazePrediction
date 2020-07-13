@@ -1,4 +1,3 @@
-# from train import model
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -67,4 +66,7 @@ class GazePredictModel(nn.Module):
 
 if __name__ == "__main__":
     model = GazePredictModel()
-    print(model)
+    device = torch.device('cuda')
+    model = model.to(device)
+    from torchsummary import summary
+    summary(model, input_size=(1, 400, 640))

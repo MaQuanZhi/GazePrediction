@@ -74,10 +74,27 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
         torch.save(model.state_dict(), f"model_{epoch}_{loss:.9f}.pkl")
+        '''
+        保存checkpoint
+        torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': loss,
+                    ...
+                    }, PATH)
+        加载checkpoint
+        model = TheModelClass(*args, **kwargs)
+        optimizer = TheOptimizerClass(*args, **kwargs)
 
+        checkpoint = torch.load(PATH)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
 
-# num_fc_ftr = model.fc.in_features
-# model.fc = torch.nn.Linear(num_fc_ftr, 3)
-# model.
-# print(model.fc)
-# model = nn.DataParallel(model).to(device)
+        model.eval()
+        # or
+        model.train()
+        '''
+

@@ -1,72 +1,57 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.functional import feature_alpha_dropout
-
-class FeatureExtractionModel(nn.Module):
-    def __init__(self) -> None:
-        super(FeatureExtractionModel,self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.CrossMapLRN2d(size=5, alpha=0.0001, beta=0.75, k=1.0),
-            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.CrossMapLRN2d(size=5, alpha=0.0001, beta=0.75, k=1.0),
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.CrossMapLRN2d(size=5, alpha=0.0001, beta=0.75, k=1.0),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.CrossMapLRN2d(size=5, alpha=0.0001, beta=0.75, k=1.0),
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.CrossMapLRN2d(size=5, alpha=0.0001, beta=0.75, k=1.0),
-            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=1),
-            nn.CrossMapLRN2d(size=5, alpha=0.0001, beta=0.75, k=1.0),
-            nn.Conv2d(512, 384, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-            nn.Conv2d(384, 64, kernel_size=1, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-
-        )
-    def forward(self,x):
-        x = self.features(x)
-        x = x.view(x.size(0),-1)
-        return x
+import torch.nn.parallel
+import torch.backends.cudnn as cudnn
+import torch.optim
+import torch.utils.data
+import torchvision.transforms as transforms
+import torchvision.datasets as datasets
+import torchvision.models as models
+import numpy as np
+from torch.nn.init import normal, constant
+import math
+from torchvision.models import resnet18
 
 
 
-class GazePredictModel(nn.Module):
+
+class GazeLSTM(nn.Module):
     def __init__(self):
-        super(GazePredictModel,self).__init__()
-        self.features = FeatureExtractionModel()
-        self.fc = nn.Sequential(
-            nn.Linear(2048,1024),
-            nn.ReLU(inplace=True),
-            nn.Linear(1024,128),
-            nn.ReLU(inplace=True),
-            nn.Linear(128,3),
-        )
+        super(GazeLSTM, self).__init__()
+        self.img_feature_dim = 256  # the dimension of the CNN feature to represent each frame
 
-    def forward(self,x):
-        x = self.features(x)
-        # x.view(x.size(0),-1)
-        x = self.fc(x)
-        return x
+        self.base_model = resnet18(pretrained=True)
+
+        self.base_model.fc = nn.Linear(512, self.img_feature_dim)
+
+        self.lstm = nn.LSTM(self.img_feature_dim, self.img_feature_dim,bidirectional=True,num_layers=2,batch_first=True)
+
+        self.last_layer = nn.Linear(2*self.img_feature_dim, 3)
+
+
+    def forward(self, input):
+
+        base_out = self.base_model(input.view((-1, 3) + input.size()[-2:]))
+        # base_out = self.fc(base_out)
+        base_out = base_out.view(input.size(0),25,self.img_feature_dim)
+
+        lstm_out, _ = self.lstm(base_out)
+        lstm_out = lstm_out[:,20:,:]
+        output = self.last_layer(lstm_out)
+
+        return output
 
 
 if __name__ == "__main__":
-    model = GazePredictModel()
-    device = torch.device('cuda')
-    model = model.to(device)
-    from torchsummary import summary
-    summary(model, input_size=(1, 400, 640))
+    # model = resnet18()
+    # device = torch.device('cuda')
+    # model = model.to(device)
+    # # print(model)
+    # from torchsummary import summary
+    # summary(model, input_size=(21,224, 224))
+    from tensorboardX import SummaryWriter
+    model = GazeLSTM()
+    # model = model
+    swriter = SummaryWriter(logdir="runs/model3")
+    input_ = torch.zeros(2,75,224,224)
+    swriter.add_graph(model,input_to_model=input_)

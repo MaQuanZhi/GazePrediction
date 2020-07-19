@@ -105,7 +105,7 @@ class GazeDataSet(Dataset):
 
     '''
 
-    def __init__(self, filepath="D:\\dataset\\openEDS\\GazePrediction", split="train", frame_num=50, 
+    def __init__(self, filepath="D:\\dataset\\openEDS_small\\GazePrediction", split="train", frame_num=50, 
     transform=T.Compose([T.Resize((224, 224)),T.ToTensor()]), loader=default_loader, **args) -> None:
         self.dataset = make_dataset(filepath, split,frame_num)
         self.transform = transform

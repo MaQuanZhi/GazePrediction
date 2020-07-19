@@ -1,100 +1,204 @@
 import os
+import shutil
 from PIL import Image
 import numpy as np
 import torch
 from torch import nn
 from torch.autograd import Variable
 import torchvision
-from models import GazePredictModel
+from models import GazeLSTM
 from dataset import GazeDataSet
 from torch.utils.data import DataLoader
 import argparse
+from losses import AngleLoss
+from tensorboardX import SummaryWriter
+import time
+
+batch_size = 2
+best_error = 100 # init with a large value
+epochs = 2
+count_test = 0
+count = 0
+workers = 1
+checkpoint_test = ''
+test_run = False
 
 
-def get_nparams(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+sWriter = SummaryWriter(logdir="runs/GazeLSTM")
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    args.bs = 32
-    args.workers = 1
-    args.epochs = 10
 
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cuda")
-    torch.backends.cudnn.deterministic = False
-    model = GazePredictModel()
-    # print(model)
-    model = model.to(device)
-    os.makedirs("models", exist_ok=True)
-    torch.save(model.state_dict, "models/GazeNet.pkl")
+
+def train(train_loader, model, criterion,optimizer, epoch):
+    global count
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    loss_list = AverageMeter()
+    # prediction_error = AverageMeter()
+    # angular = AverageMeter()
+
+    # switch to train mode
     model.train()
-    nparams = get_nparams(model)
-    from torchsummary import summary
-    summary(model, input_size=(1, 400, 640))
+
+    end = time.time()
+
+    for i,  (source_frame,target) in enumerate(train_loader):
+
+        # measure data loading time
+        data_time.update(time.time() - end)
+        source_frame = source_frame.cuda(async=True)
+        target = target.cuda(async=True)
+
+
+        source_frame_var = torch.autograd.Variable(source_frame)
+        target_var = torch.autograd.Variable(target)
+
+        # compute output
+        output = model(source_frame_var)
+
+
+        # loss = Variable(criterion(output, target_var),requires_grad=True)
+        loss = criterion(output, target_var)
+
+        loss_list.update(loss.item(), source_frame.size(0))
+
+        sWriter.add_scalar("loss", loss_list.val, count)
+        # compute gradient and do SGD step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+        count = count +1
+
+        print('Epoch: [{0}][{1}/{2}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                   epoch, i, len(train_loader), batch_time=batch_time,
+                   data_time=data_time, loss=loss_list))
+
+def validate(val_loader, model, criterion):
+    global count_test
+    batch_time = AverageMeter()
+    loss_list = AverageMeter()
+    # prediction_error = AverageMeter()
+    model.eval()
+    end = time.time()
+    # angular = AverageMeter()
+
+    for i, (source_frame,target) in enumerate(val_loader):
+
+        source_frame = source_frame.cuda(async=True)
+        target = target.cuda(async=True)
+
+        source_frame_var = torch.autograd.Variable(source_frame,volatile=True)
+        target_var = torch.autograd.Variable(target,volatile=True)
+        with torch.no_grad():
+            # compute output
+            output = model(source_frame_var)
+
+            loss = criterion(output, target_var)
+            # angular_error = compute_angular_error(output,target_var)
+            # pred_error = ang_error[:,0]*180/math.pi
+            # pred_error = torch.mean(pred_error,0)
+
+            # angular.update(angular_error, source_frame.size(0))
+            # prediction_error.update(pred_error, source_frame.size(0))
+
+            loss_list.update(loss.item(), source_frame.size(0))
+
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+
+        print('Epoch: [{0}/{1}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                    i, len(val_loader), batch_time=batch_time,
+                   loss=loss_list))
+
+    # sWriter.add_scalar("predicted error", prediction_error.avg, count)
+    # sWriter.add_scalar("angular-test", angular.avg, count)
+    sWriter.add_scalar("loss-test", loss_list.avg, count)
+    return loss_list.avg
+
+def main():
+    global args, best_error
+
+    model = GazeLSTM().cuda()
+    # model = torch.nn.DataParallel(model_v).cuda()
+    # model.cuda()
+
+
+    torch.backends.cudnn.benchmark = True
+
+    train_set = GazeDataSet(split="train",frame_num=20)
+    validation_set = GazeDataSet(split="validation",frame_num=20)
+
+    train_loader = DataLoader(
+        train_set, batch_size, shuffle=True, num_workers=workers)
+    
+    val_loader = DataLoader(
+        validation_set, batch_size, shuffle=True, num_workers=workers)
+
+    # criterion = AngleLoss().cuda()
+    criterion = nn.MSELoss().cuda()
 
     optimizer = torch.optim.Adam(model.parameters())
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, 'min', patience=5)
 
-    train = GazeDataSet(split="train")
-    # valid = GazeDataSet(split="validation")
-    # test = GazeDataSet(split="test")
-    trainloader = DataLoader(
-        train, args.bs, shuffle=True, num_workers=args.workers)
-    # validloader = DataLoader(valid,args.bs,shuffle=True,num_workers=args.workers)
-    # testloader = DataLoader(valid,args.bs,shuffle=True,num_workers=args.workers)
+    if test_run:
+        test_set = GazeDataSet(split="test",frame_num=20)
+        test_loader = DataLoader(
+        test_set, batch_size, shuffle=False, num_workers=workers)
+        checkpoint = torch.load(checkpoint_test)
+        model.load_state_dict(checkpoint['state_dict'])
+        angular_error = validate(test_loader, model, criterion)
+        print('Angular Error is',angular_error)
 
-    for epoch in range(args.epochs):
-        for i, batchdata in enumerate(trainloader):
-            image_path, label = batchdata
-            # print(image_path,label)
-            img = [np.expand_dims(np.array(Image.open(path).convert(
-                'L'), dtype=np.float32), 0) for path in image_path]
-            label = [np.array(_.strip().split(',')[1:], dtype=np.float32)
-                     for _ in label]
-            data = Variable(torch.tensor(img)).to(device)
-            # print(data.shape)  # torch.Size([4, 1, 400, 640]) batch_size,通道数,高度,宽度
-            # data = data.to(device)
-            target = Variable(torch.tensor(label)).to(device)
-            # data = img.to(device)
-            # target = label.to(device)
-            optimizer.zero_grad()
-            output = model(data)
-            loss = nn.MSELoss()(output, target)
-            if i % 1 == 0:
-                print('\rEpoch:{} [{}/{}], Loss: {:.9f}'.format(epoch,
-                                                                i, len(trainloader), loss), end='')
-            with open(f'loss.txt', 'a') as f:
-                f.write("{},{},{}\n".format(epoch, i, loss))
-            # if i%100 == 0:
-            #     print('\rEpoch:{} [{}/{}], Loss: {:.3f}'.format(epoch,i,len(trainloader),loss),end='')
-            loss.backward()
-            optimizer.step()
-        torch.save(model.state_dict(), f"model_{epoch}_{loss:.9f}.pkl")
-        '''
-        保存checkpoint
-        torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss,
-                    ...
-                    }, PATH)
-        加载checkpoint
-        model = TheModelClass(*args, **kwargs)
-        optimizer = TheOptimizerClass(*args, **kwargs)
 
-        checkpoint = torch.load(PATH)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        epoch = checkpoint['epoch']
-        loss = checkpoint['loss']
+    for epoch in range(0, epochs):
+        # train for one epoch
+        train(train_loader, model, criterion, optimizer, epoch)
 
-        model.eval()
-        # or
-        model.train()
-        '''
+        # evaluate on validation set
+        angular_error = validate(val_loader, model, criterion)
+
+        # remember best angular error in validation and save checkpoint
+        is_best = angular_error < best_error
+        best_error = min(angular_error, best_error)
+        save_checkpoint({
+            'epoch': epoch + 1,
+            'state_dict': model.state_dict(),
+            'best_prec1': best_error,
+        }, is_best)
+
+def save_checkpoint(state, is_best, filename='checkpoint_GazeLSTM.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, 'model_best_GazeLSTM.pth.tar')
+
+if __name__ == "__main__":
+    main()
+
 

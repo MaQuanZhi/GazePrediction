@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .utils import load_state_dict_from_url
+from torchvision.models.utils import load_state_dict_from_url
 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -142,7 +142,10 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+        # self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+        #                        bias=False)
+        # 修改为单通道灰度图
+        self.conv1 = nn.Conv2d(1, self.inplanes, kernel_size=7, stride=2, padding=3,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -154,8 +157,15 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[1])
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
+
+        self.layer5 = self._make_layer(block, 1024, layers[3], stride=2,
+                                       dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        # self.avgpool = nn.AvgPool2d((10, 10))
+
+        # self.fc = nn.Linear(512 * block.expansion, num_classes)
+        # 修改最后一层全连接层为卷积层
+        self.last_conv = torch.nn.Conv2d(in_channels=1024 * block.expansion, out_channels=num_classes, kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -210,9 +220,12 @@ class ResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
+        x = self.layer5(x)
+
         x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.fc(x)
+        # x = torch.flatten(x, 1)
+        # x = self.fc(x)
+        x = self.last_conv(x)
 
         return x
 

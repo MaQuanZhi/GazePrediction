@@ -67,7 +67,6 @@ def train(train_loader, model, criterion,optimizer, epoch):
         source_frame = source_frame.cuda(async=True)
         target = target.cuda(async=True)
 
-
         source_frame_var = torch.autograd.Variable(source_frame)
         target_var = torch.autograd.Variable(target)
 
@@ -153,8 +152,8 @@ def main():
 
     torch.backends.cudnn.benchmark = True
 
-    train_set = GazeDataSet(split="train",frame_num=20)
-    validation_set = GazeDataSet(split="validation",frame_num=20)
+    train_set = GazeDataSet(filepath="D:\\dataset\\openEDS_small\\GazePrediction",split="train",frame_num=20)
+    validation_set = GazeDataSet(filepath="D:\\dataset\\openEDS_small\\GazePrediction",split="validation",frame_num=20)
 
     train_loader = DataLoader(
         train_set, batch_size, shuffle=True, num_workers=workers)
@@ -170,7 +169,7 @@ def main():
     if test_run:
         test_set = GazeDataSet(split="test",frame_num=20)
         test_loader = DataLoader(
-        test_set, batch_size, shuffle=False, num_workers=workers)
+            test_set, batch_size, shuffle=False, num_workers=workers)
         checkpoint = torch.load(checkpoint_test)
         model.load_state_dict(checkpoint['state_dict'])
         angular_error = validate(test_loader, model, criterion)
@@ -200,5 +199,4 @@ def save_checkpoint(state, is_best, filename='checkpoint_GazeLSTM.pth.tar'):
 
 if __name__ == "__main__":
     main()
-
 

@@ -18,7 +18,7 @@ def default_loader(path):
         return Image.new("RGB", (400, 640), "white")
 
 
-def make_dataset(filepath="D:\\dataset\\openEDS_small\\GazePrediction", split="train", frame_num=50):
+def make_dataset(filepath="D:\\dataset\\openEDS\\GazePrediction", split="train", frame_num=50):
     filepath = os.path.join(filepath, split)
     dataset = []
     file_path_list = os.listdir(os.path.join(filepath, "sequences"))
@@ -34,14 +34,14 @@ def make_dataset(filepath="D:\\dataset\\openEDS_small\\GazePrediction", split="t
                             filepath, "sequences", file_path, '%0.3d.png' % (file_number+j))
                         list_sources.append(name_frame)
                     if split == "test":  # 无label
-                        [list_label.append([]) for _ in range(5)]
+                        [list_label.append([]) for _ in range(frame_num)]
                     else:
                         with open(os.path.join(filepath, "labels", f"{file_path}.txt"), 'r') as f:
                             lines = f.read().split('\n')
-                            for line in lines[file_number+1:file_number+6]:
+                            for line in lines[file_number-frame_num+1:file_number+6]:
                                 if line:
                                     list_label.append(f"{file_path}\\{line}")
-                    if len(list_label) == 5:
+                    if len(list_label) == frame_num+5:
                         dataset.append((list_sources, list_label))
     return dataset
 
@@ -105,7 +105,7 @@ class GazeDataSet(Dataset):
 
     '''
 
-    def __init__(self, filepath="D:\\dataset\\openEDS_small\\GazePrediction", split="train", frame_num=50, 
+    def __init__(self, filepath="D:\\dataset\\openEDS\\GazePrediction", split="train", frame_num=50, 
     transform=T.Compose([T.Resize((224, 224)),T.ToTensor()]), loader=default_loader, **args) -> None:
         self.dataset = make_dataset(filepath, split,frame_num)
         self.transform = transform
@@ -135,8 +135,8 @@ class GazeDataSet(Dataset):
 if __name__ == "__main__":
     # transform = T.Compose([T.Resize((224, 224)),
     #                        T.ToTensor()])
-    ds = GazeDataSet("D:\\dataset\\openEDS_small\\GazePrediction",
-                     split="train",frame_num=20)
+    ds = GazeDataSet("D:\\dataset\\openEDS\\GazePrediction",
+                     split="train",frame_num=20) # 97280
     source_video, gaze_vector = ds[0]
     print(source_video.size(), gaze_vector.size())
     print(gaze_vector)

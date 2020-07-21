@@ -14,13 +14,13 @@ from losses import AngleLoss
 from tensorboardX import SummaryWriter
 import time
 
-batch_size = 2
+batch_size = 8
 best_error = 100 # init with a large value
-epochs = 2
+epochs = 100
 count_test = 0
 count = 0
 workers = 1
-checkpoint_test = ''
+checkpoint_test = 'checkpoint_GazeLSTM.pth.tar'
 test_run = False
 
 
@@ -64,8 +64,8 @@ def train(train_loader, model, criterion,optimizer, epoch):
 
         # measure data loading time
         data_time.update(time.time() - end)
-        source_frame = source_frame.cuda(async=True)
-        target = target.cuda(async=True)
+        source_frame = source_frame.cuda()
+        target = target.cuda()
 
         source_frame_var = torch.autograd.Variable(source_frame)
         target_var = torch.autograd.Variable(target)
@@ -108,8 +108,8 @@ def validate(val_loader, model, criterion):
 
     for i, (source_frame,target) in enumerate(val_loader):
 
-        source_frame = source_frame.cuda(async=True)
-        target = target.cuda(async=True)
+        source_frame = source_frame.cuda()
+        target = target.cuda()
 
         source_frame_var = torch.autograd.Variable(source_frame,volatile=True)
         target_var = torch.autograd.Variable(target,volatile=True)
@@ -148,12 +148,11 @@ def main():
     model = GazeLSTM().cuda()
     # model = torch.nn.DataParallel(model_v).cuda()
     # model.cuda()
-
-
+    data_path = "C:\\mqz\\openEDS\\GazePrediction"
     torch.backends.cudnn.benchmark = True
 
-    train_set = GazeDataSet(filepath="D:\\dataset\\openEDS_small\\GazePrediction",split="train",frame_num=20)
-    validation_set = GazeDataSet(filepath="D:\\dataset\\openEDS_small\\GazePrediction",split="validation",frame_num=20)
+    train_set = GazeDataSet(filepath=data_path,split="train",frame_num=20)
+    validation_set = GazeDataSet(filepath=data_path,split="validation",frame_num=20)
 
     train_loader = DataLoader(
         train_set, batch_size, shuffle=True, num_workers=workers)
@@ -166,17 +165,10 @@ def main():
 
     optimizer = torch.optim.Adam(model.parameters())
 
-    if test_run:
-        test_set = GazeDataSet(split="test",frame_num=20)
-        test_loader = DataLoader(
-            test_set, batch_size, shuffle=False, num_workers=workers)
-        checkpoint = torch.load(checkpoint_test)
-        model.load_state_dict(checkpoint['state_dict'])
-        angular_error = validate(test_loader, model, criterion)
-        print('Angular Error is',angular_error)
-
-
-    for epoch in range(0, epochs):
+    checkpoint = torch.load(checkpoint_test)
+    model.load_state_dict(checkpoint['state_dict'])
+    epoch_start = checkpoint["epoch"] if checkpoint["epoch"] else 0
+    for epoch in range(epoch_start, epochs):
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch)
 
@@ -190,7 +182,7 @@ def main():
             'epoch': epoch + 1,
             'state_dict': model.state_dict(),
             'best_prec1': best_error,
-        }, is_best)
+        }, is_best,filename=f"checkpoint_GazeLSTM_{epoch+1}.pth.tar")
 
 def save_checkpoint(state, is_best, filename='checkpoint_GazeLSTM.pth.tar'):
     torch.save(state, filename)

@@ -24,11 +24,11 @@ def test(test_loader, model, criterion):
         # target = target.cuda()
         # label = label.
 
-        source_frame_var = torch.autograd.Variable(source_frame,volatile=True)
+        # source_frame_var = torch.autograd.Variable(source_frame,volatile=True)
         # target_var = torch.autograd.Variable(target,volatile=True)
         with torch.no_grad():
             # compute output
-            output = model(source_frame_var)
+            output = model(source_frame)
             output = output[:,-5:,:]
             output_list = output.cpu().numpy().tolist()
             label_list = label.numpy().tolist()
@@ -57,7 +57,7 @@ def test(test_loader, model, criterion):
 def main():
     model = GazeLSTM().cuda()
 
-    data_path = "C:\\mqz\\openEDS\\GazePrediction"
+    data_path = "D:\\dataset\\openEDS\\GazePrediction"
     checkpoint_test = "model_best_GazeLSTM.pth.tar"
     batch_size = 8
     workers = 1

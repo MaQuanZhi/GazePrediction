@@ -48,6 +48,46 @@ class GazeLSTM(nn.Module):
 
         return output
 
+class GazeLSTMCell(nn.Module):
+    def __init__(self):
+        super(GazeLSTMCell, self).__init__()
+        self.img_feature_dim = 256  # the dimension of the CNN feature to represent each frame
+
+        self.base_model = resnet18(pretrained=True)
+
+        self.base_model.fc = nn.Linear(512, self.img_feature_dim)
+
+        self.lstm_cell = nn.LSTMCell(self.img_feature_dim,self.img_feature_dim)
+
+        # self.lstm = nn.LSTM(self.img_feature_dim, self.img_feature_dim,bidirectional=True,num_layers=2,batch_first=True)
+        
+        self.dropout = nn.Dropout(0.5)
+        
+        self.fc = nn.Linear(self.img_feature_dim,18)
+
+
+
+    def forward(self, input,hx,cx):
+
+        base_out = self.base_model(input)
+        # base_out = self.fc(base_out)
+        # base_out = base_out.view(input.size(0),25,self.img_feature_dim)
+        hx,cx = self.lstm_cell(base_out,(hx,cx))
+        hx_drop = self.dropout(hx)
+        x = self.fc(hx_drop)
+        return x,hx,cx
+        '''
+        尝试使用LSTMCell model4
+        base_out = base_out.permute(1,0,2) # 交换0，1轴,batch_size放中间
+        hx = torch.randn(base_out.size()[1],base_out.size()[2])
+        cx = torch.randn(base_out.size()[1],base_out.size()[2])
+        output = []
+        for i in range(base_out.size()[0]):
+            hx,cx = self.lstm_cell(base_out[i],(hx,cx))
+            out = self.fc(hx)
+            output.append(out)
+        '''
+
 
 if __name__ == "__main__":
     # model = resnet18()
@@ -57,8 +97,10 @@ if __name__ == "__main__":
     # from torchsummary import summary
     # summary(model, input_size=(21,224, 224))
     from tensorboardX import SummaryWriter
-    model = GazeLSTM()
+    model = GazeLSTMCell()
     # model = model
-    swriter = SummaryWriter(logdir="runs/model5")
-    input_ = torch.zeros(2,75,224,224)
-    swriter.add_graph(model,input_to_model=input_)
+    swriter = SummaryWriter(logdir="runs/model6")
+    input_ = torch.zeros(1,3,224,224)
+    hx = torch.zeros(1,256)
+    cx = torch.zeros(1,256)
+    swriter.add_graph(model,input_to_model=(input_,hx,cx))

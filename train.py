@@ -16,7 +16,7 @@ import time
 from torchvision import transforms as T
 from itertools import chain
 
-batch_size = 4
+batch_size = 1
 best_error = 100 # init with a large value
 epochs = 100
 count_test = 0
@@ -131,7 +131,7 @@ def train_LSTMCell(train_loader, model, criterion,optimizer, epoch):
             loss += criterion(output,label_list_tensor)
             loss_list.update(loss.item())
 
-        optimizer.zero_grad()  
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -165,11 +165,11 @@ def validate_LSTMCell(val_loader, model, criterion):
             img_list_tensor = img_list_tensor.cuda()
             target_list_tensor = label_list_tensor.view(-1,18)
             output,hx,cx = model(img_list_tensor,hx,cx)
-            loss += criterion(output,target_list_tensor)
-            loss_list.update(loss.item())
+        loss = criterion(output,target_list_tensor)
+        loss_list.update(loss.item())
 
-            sWriter.add_scalar("loss", loss_list.val, count)
-            count = count +1
+        sWriter.add_scalar("loss", loss_list.val, count)
+        count = count +1
 
         print('Epoch: [{0}/{1}]\t'
                 'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
@@ -230,7 +230,7 @@ def main():
     model = GazeLSTMCell().cuda()
     # model = torch.nn.DataParallel(model_v).cuda()
     # model.cuda()
-    data_path = "C:\\mqz\\openEDS\\GazePrediction"
+    data_path = "D:\\dataset\\openEDS_small\\GazePrediction"
     torch.backends.cudnn.benchmark = True
 
     train_set = GazeDataSetPath(filepath=data_path,split="train")
@@ -244,6 +244,7 @@ def main():
 
     # criterion = AngleLoss().cuda()
     criterion = nn.MSELoss().cuda()
+    val_criterion = AngleLoss().cuda()
 
     optimizer = torch.optim.Adam(model.parameters())
 
@@ -253,10 +254,10 @@ def main():
     epoch_start = 0
     for epoch in range(epoch_start, epochs):
         # train for one epoch
-        train_LSTMCell(train_loader, model, criterion, optimizer, epoch)
+        train_LSTMCell(train_loader, model, val_criterion, optimizer, epoch)
 
         # evaluate on validation set
-        error = validate_LSTMCell(val_loader, model, criterion)
+        error = validate_LSTMCell(val_loader, model, val_criterion)
 
         # remember best angular error in validation and save checkpoint
         is_best = error < best_error
@@ -265,7 +266,7 @@ def main():
             'epoch': epoch + 1,
             'state_dict': model.state_dict(),
             'best_prec1': best_error,
-        }, is_best,filename=f"checkpoint_GazeLSTMCell_{epoch+1}.pth.tar")
+        }, is_best,filename=f"checkpoint_GazeLSTMCell_test.pth.tar")
 
 def save_checkpoint(state, is_best, filename='checkpoint_GazeLSTMCell.pth.tar'):
     torch.save(state, filename)

@@ -2,6 +2,7 @@ import os
 from PIL import Image
 import numpy as np
 import torch
+from torch.nn.modules.activation import LeakyReLU
 from torch.utils.data import Dataset
 import cv2
 from torchvision import transforms
@@ -64,10 +65,14 @@ def make_dataset_path(filepath, split="train"):
         for img_path in os.listdir(os.path.join(filepath, "sequences", file_path)):
             img_path_list.append(os.path.join(
                 filepath, "sequences", file_path, img_path))
-        with open(os.path.join(filepath, "labels", f"{file_path}.txt"), 'r') as f:
-            label_list = f.read().split('\n')[:-1]
-        assert len(img_path_list) == len(label_list)
-        dataset.append((img_path_list, label_list))
+        if split !="test":
+            with open(os.path.join(filepath, "labels", f"{file_path}.txt"), 'r') as f:
+                label_list = f.read().split('\n')[:-1]
+            assert len(img_path_list) == len(label_list)
+            dataset.append((img_path_list, label_list))
+        else:
+            label_list = ["0,0,0,0" for _ in range(len(img_path_list))]
+            dataset.append((img_path_list, label_list))
         # print(img_path_list)
     return dataset
 
@@ -180,7 +185,7 @@ if __name__ == "__main__":
     # "C:\\mqz\\openEDS_small\\GazePrediction"
     from torch.utils.data import DataLoader
     train_set = GazeDataSetPath("D:\\dataset\\openEDS\\GazePrediction",
-                           split="train")
+                           split="test")
     batch_size = 4
     train_loader = DataLoader(
         train_set, batch_size, shuffle=True, num_workers=2)
